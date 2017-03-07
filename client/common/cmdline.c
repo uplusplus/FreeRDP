@@ -187,6 +187,7 @@ static COMMAND_LINE_ARGUMENT_A args[] =
 	{ "scale", COMMAND_LINE_VALUE_REQUIRED, "<scale amount (%%)>", "100", NULL, -1, NULL, "Scaling factor of the display (value of 100, 140, or 180)" },
 	{ "scale-desktop", COMMAND_LINE_VALUE_REQUIRED, "<scale amount (%%)>", "100", NULL, -1, NULL, "Scaling factor for desktop applications (value between 100 and 500)" },
 	{ "scale-device", COMMAND_LINE_VALUE_REQUIRED, "<scale amount (%%)>", "100", NULL, -1, NULL, "Scaling factor for app store applications (100, 140, or 180)" },
+	{ "action-script", COMMAND_LINE_VALUE_REQUIRED, "<file name>", "~/.config/freerdp/action.sh", NULL, -1, NULL, "Action script" },
 	{ NULL, 0, NULL, NULL, NULL, -1, NULL, NULL }
 };
 
@@ -627,6 +628,13 @@ BOOL freerdp_client_add_static_channel(rdpSettings* settings, int count,
 {
 	int index;
 	ADDIN_ARGV* args;
+
+	if (!settings || !params || !params[0])
+		return FALSE;
+
+	if (freerdp_static_channel_collection_find(settings, params[0]))
+		return TRUE;
+
 	args = (ADDIN_ARGV*) calloc(1, sizeof(ADDIN_ARGV));
 
 	if (!args)
@@ -672,6 +680,13 @@ BOOL freerdp_client_add_dynamic_channel(rdpSettings* settings, int count,
 {
 	int index;
 	ADDIN_ARGV* args;
+
+	if (!settings || !params || !params[0])
+		return FALSE;
+
+	if (freerdp_dynamic_channel_collection_find(settings, params[0]))
+		return TRUE;
+
 	args = (ADDIN_ARGV*) malloc(sizeof(ADDIN_ARGV));
 
 	if (!args)
@@ -2506,6 +2521,12 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings,
 				return COMMAND_LINE_ERROR;
 			}
 		}
+		CommandLineSwitchCase(arg, "action-script")
+		{
+			free (settings->ActionScript);
+			if (!(settings->ActionScript = _strdup(arg->Value)))
+				return COMMAND_LINE_ERROR_MEMORY;
+		}
 		CommandLineSwitchDefault(arg)
 		{
 		}
@@ -2513,36 +2534,41 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings,
 	}
 	while ((arg = CommandLineFindNextArgumentA(arg)) != NULL);
 
-	free(settings->Username);
-
-	if (!settings->Domain && user)
+	if (user)
 	{
-		BOOL ret;
-		free(settings->Domain);
-		ret = freerdp_parse_username(user, &settings->Username, &settings->Domain);
-		free(user);
+		free(settings->Username);
+		if (!settings->Domain && user)
+		{
+			BOOL ret;
+			free(settings->Domain);
 
-		if (!ret)
-			return COMMAND_LINE_ERROR;
+			ret = freerdp_parse_username(user, &settings->Username, &settings->Domain);
+			free(user);
+			if (!ret)
+				return COMMAND_LINE_ERROR;
+		}
+		else
+			settings->Username = user;
 	}
-	else
-		settings->Username = user;
 
-	free(settings->GatewayUsername);
-
-	if (!settings->GatewayDomain && gwUser)
+	if (gwUser)
 	{
-		BOOL ret;
-		free(settings->GatewayDomain);
-		ret = freerdp_parse_username(gwUser, &settings->GatewayUsername,
-		                             &settings->GatewayDomain);
-		free(gwUser);
+		free(settings->GatewayUsername);
 
-		if (!ret)
-			return COMMAND_LINE_ERROR;
+		if (!settings->GatewayDomain && gwUser)
+		{
+			BOOL ret;
+			free(settings->GatewayDomain);
+			ret = freerdp_parse_username(gwUser, &settings->GatewayUsername,
+						     &settings->GatewayDomain);
+			free(gwUser);
+
+			if (!ret)
+				return COMMAND_LINE_ERROR;
+		}
+		else
+			settings->GatewayUsername = gwUser;
 	}
-	else
-		settings->GatewayUsername = gwUser;
 
 	freerdp_performance_flags_make(settings);
 
@@ -2674,7 +2700,7 @@ BOOL freerdp_client_load_addins(rdpChannels* channels, rdpSettings* settings)
 	if (settings->DeviceRedirection)
 	{
 		if (!freerdp_client_load_static_channel_addin(channels, settings, "rdpdr",
-		        settings))
+			settings))
 			return FALSE;
 
 		if (!freerdp_static_channel_collection_find(settings, "rdpsnd"))
@@ -2726,14 +2752,11 @@ BOOL freerdp_client_load_addins(rdpChannels* channels, rdpSettings* settings)
 
 	if (settings->RedirectClipboard)
 	{
-		if (!freerdp_static_channel_collection_find(settings, "cliprdr"))
-		{
-			char* params[1];
-			params[0] = "cliprdr";
+		char* params[1];
+		params[0] = "cliprdr";
 
-			if (!freerdp_client_add_static_channel(settings, 1, (char**) params))
-				return FALSE;
-		}
+		if (!freerdp_client_add_static_channel(settings, 1, (char**) params))
+			return FALSE;
 	}
 
 	if (settings->LyncRdpMode)
@@ -2752,14 +2775,14 @@ BOOL freerdp_client_load_addins(rdpChannels* channels, rdpSettings* settings)
 	if (settings->EncomspVirtualChannel)
 	{
 		if (!freerdp_client_load_static_channel_addin(channels, settings, "encomsp",
-		        settings))
+			settings))
 			return FALSE;
 	}
 
 	if (settings->RemdeskVirtualChannel)
 	{
 		if (!freerdp_client_load_static_channel_addin(channels, settings, "remdesk",
-		        settings))
+			settings))
 			return FALSE;
 	}
 

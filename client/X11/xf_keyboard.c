@@ -46,23 +46,15 @@
 static BOOL firstPressRightCtrl = TRUE;
 static BOOL ungrabKeyboardWithRightCtrl = TRUE;
 
-BOOL xf_keyboard_action_script_init(xfContext* xfc)
+static BOOL xf_keyboard_action_script_init(xfContext* xfc)
 {
 	FILE* keyScript;
 	char* keyCombination;
 	char buffer[1024] = { 0 };
 	char command[1024] = { 0 };
+	xfc->actionScriptExists = PathFileExistsA(xfc->context.settings->ActionScript);
 
-	if (xfc->actionScript)
-	{
-		free(xfc->actionScript);
-		xfc->actionScript = NULL;
-	}
-
-	if (PathFileExistsA("/usr/share/freerdp/action.sh"))
-		xfc->actionScript = _strdup("/usr/share/freerdp/action.sh");
-
-	if (!xfc->actionScript)
+	if (!xfc->actionScriptExists)
 		return FALSE;
 
 	xfc->keyCombinations = ArrayList_New(TRUE);
@@ -71,13 +63,12 @@ BOOL xf_keyboard_action_script_init(xfContext* xfc)
 		return FALSE;
 
 	ArrayList_Object(xfc->keyCombinations)->fnObjectFree = free;
-	sprintf_s(command, sizeof(command), "%s key", xfc->actionScript);
+	sprintf_s(command, sizeof(command), "%s key", xfc->context.settings->ActionScript);
 	keyScript = popen(command, "r");
 
 	if (!keyScript)
 	{
-		free(xfc->actionScript);
-		xfc->actionScript = NULL;
+		xfc->actionScriptExists = FALSE;
 		return FALSE;
 	}
 
@@ -89,8 +80,7 @@ BOOL xf_keyboard_action_script_init(xfContext* xfc)
 		if (!keyCombination || ArrayList_Add(xfc->keyCombinations, keyCombination) < 0)
 		{
 			ArrayList_Free(xfc->keyCombinations);
-			free(xfc->actionScript);
-			xfc->actionScript = NULL;
+			xfc->actionScriptExists = FALSE;
 			pclose(keyScript);
 			return FALSE;
 		}
@@ -100,7 +90,7 @@ BOOL xf_keyboard_action_script_init(xfContext* xfc)
 	return xf_event_action_script_init(xfc);
 }
 
-void xf_keyboard_action_script_free(xfContext* xfc)
+static void xf_keyboard_action_script_free(xfContext* xfc)
 {
 	xf_event_action_script_free(xfc);
 
@@ -108,12 +98,7 @@ void xf_keyboard_action_script_free(xfContext* xfc)
 	{
 		ArrayList_Free(xfc->keyCombinations);
 		xfc->keyCombinations = NULL;
-	}
-
-	if (xfc->actionScript)
-	{
-		free(xfc->actionScript);
-		xfc->actionScript = NULL;
+		xfc->actionScriptExists = FALSE;
 	}
 }
 
@@ -169,9 +154,7 @@ void xf_keyboard_key_release(xfContext* xfc, BYTE keycode, KeySym keysym)
 		return;
 
 	xfc->KeyboardState[keycode] = FALSE;
-	
 	xf_keyboard_handle_special_keys_release(xfc, keysym);
-	
 	xf_keyboard_send_key(xfc, FALSE, keycode);
 }
 
@@ -370,7 +353,6 @@ static int xf_keyboard_execute_action_script(xfContext* xfc,
 {
 	int index;
 	int count;
-	int exitCode;
 	int status = 1;
 	FILE* keyScript;
 	const char* keyStr;
@@ -380,7 +362,7 @@ static int xf_keyboard_execute_action_script(xfContext* xfc,
 	char command[1024] = { 0 };
 	char combination[1024] = { 0 };
 
-	if (!xfc->actionScript)
+	if (!xfc->actionScriptExists)
 		return 1;
 
 	if ((keysym == XK_Shift_L) || (keysym == XK_Shift_R) ||
@@ -424,7 +406,7 @@ static int xf_keyboard_execute_action_script(xfContext* xfc,
 		return 1;
 
 	sprintf_s(command, sizeof(command), "%s key %s",
-	          xfc->actionScript, combination);
+	          xfc->context.settings->ActionScript, combination);
 	keyScript = popen(command, "r");
 
 	if (!keyScript)
@@ -438,11 +420,13 @@ static int xf_keyboard_execute_action_script(xfContext* xfc,
 			status = 0;
 	}
 
-	exitCode = pclose(keyScript);
+	if (pclose(keyScript) == -1)
+		status = -1;
+
 	return status;
 }
 
-int xk_keyboard_get_modifier_keys(xfContext* xfc, XF_MODIFIER_KEYS* mod)
+static int xk_keyboard_get_modifier_keys(xfContext* xfc, XF_MODIFIER_KEYS* mod)
 {
 	mod->LeftShift = xf_keyboard_key_pressed(xfc, XK_Shift_L);
 	mod->RightShift = xf_keyboard_key_pressed(xfc, XK_Shift_R);
@@ -481,7 +465,7 @@ BOOL xf_keyboard_handle_special_keys(xfContext* xfc, KeySym keysym)
 		if (ungrabKeyboardWithRightCtrl)
 			ungrabKeyboardWithRightCtrl = FALSE;
 	}
-	
+
 	if (!xf_keyboard_execute_action_script(xfc, &mod, keysym))
 	{
 		return TRUE;
@@ -595,25 +579,26 @@ void xf_keyboard_handle_special_keys_release(xfContext* xfc, KeySym keysym)
 {
 	if (keysym != XK_Control_R)
 		return;
-	
+
 	firstPressRightCtrl = TRUE;
-	
+
 	if (!ungrabKeyboardWithRightCtrl)
 		return;
-	
+
 	// all requirements for ungrab are fulfilled, ungrabbing now
 	XF_MODIFIER_KEYS mod = { 0 };
 	xk_keyboard_get_modifier_keys(xfc, &mod);
-	
+
 	if (!mod.RightCtrl)
 	{
 		if (!xfc->fullscreen)
 		{
 			xf_toggle_control(xfc);
 		}
+
 		XUngrabKeyboard(xfc->display, CurrentTime);
 	}
-	
+
 	// ungrabbed
 	ungrabKeyboardWithRightCtrl = FALSE;
 }

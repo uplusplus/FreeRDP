@@ -22,7 +22,7 @@ static BOOL similar(const BYTE* src, const BYTE* dst, size_t size)
 	{
 		int diff = src[x] - dst[x];
 
-		if (abs(diff) > 2)
+		if (abs(diff) > 4)
 		{
 			fprintf(stderr, "%"PRIuz" %02"PRIX8" : %02"PRIX8" diff=%d\n", x, src[x], dst[x], abs(diff));
 			return FALSE;
@@ -78,13 +78,14 @@ static BOOL similarRGB(const BYTE* src, const BYTE* dst, size_t size, UINT32 for
 	return TRUE;
 }
 
-static void get_size(UINT32* width, UINT32* height)
+static void get_size(BOOL large, UINT32* width, UINT32* height)
 {
+	UINT32 shift = large ? 8 : 1;
 	winpr_RAND((BYTE*)width, sizeof(*width));
 	winpr_RAND((BYTE*)height, sizeof(*height));
 	// TODO: Algorithm only works on even resolutions...
-	*width = (*width % 64 + 1) << 1;
-	*height = (*height % 64 + 1) << 1;
+	*width = (*width % 64 + 1) << shift;
+	*height = (*height % 64 + 1) << shift;
 }
 
 static BOOL check_padding(const BYTE* psrc, size_t size, size_t padding,
@@ -139,18 +140,19 @@ static void* set_padding(size_t size, size_t padding)
 {
 	size_t halfPad = (padding + 1) / 2;
 	BYTE* psrc;
-	BYTE* src = calloc(1, size + 2 * halfPad);
+	BYTE* src = _aligned_malloc(size + 2 * halfPad, 16);
 
 	if (!src)
 		return NULL;
 
 	memset(&src[0], 'A', halfPad);
+	memset(&src[halfPad], 0, size);
 	memset(&src[halfPad + size], 'A', halfPad);
 	psrc = &src[halfPad];
 
 	if (!check_padding(psrc, size, padding, "init"))
 	{
-		free(src);
+		_aligned_free(src);
 		return NULL;
 	}
 
@@ -165,12 +167,12 @@ static void free_padding(void* src, size_t padding)
 		return;
 
 	ptr = ((BYTE*)src) - (padding + 1) / 2;
-	free(ptr);
+	_aligned_free(ptr);
 }
 
 /* Create 2 pseudo YUV420 frames of same size.
  * Combine them and check, if the data is at the expected position. */
-static BOOL TestPrimitiveYUVCombine(void)
+static BOOL TestPrimitiveYUVCombine(primitives_t* prims, prim_size_t roi)
 {
 	UINT32 x, y, i;
 	UINT32 awidth, aheight;
@@ -186,9 +188,6 @@ static BOOL TestPrimitiveYUVCombine(void)
 	size_t padding = 10000;
 	PROFILER_DEFINE(yuvCombine);
 	PROFILER_DEFINE(yuvSplit);
-	prim_size_t roi;
-	primitives_t* prims = primitives_get();
-	get_size(&roi.width, &roi.height);
 	awidth = roi.width + 16 - roi.width % 16;
 	aheight = roi.height + 16 - roi.height % 16;
 	fprintf(stderr, "Running YUVCombine on frame size %"PRIu32"x%"PRIu32" [%"PRIu32"x%"PRIu32"]\n",
@@ -255,7 +254,6 @@ static BOOL TestPrimitiveYUVCombine(void)
 	}
 
 	PROFILER_EXIT(yuvCombine);
-	PROFILER_PRINT(yuvCombine);
 
 	for (x = 0; x < 3; x++)
 	{
@@ -283,7 +281,6 @@ static BOOL TestPrimitiveYUVCombine(void)
 	}
 
 	PROFILER_EXIT(yuvSplit);
-	PROFILER_PRINT(yuvSplit);
 
 	for (x = 0; x < 3; x++)
 	{
@@ -343,6 +340,10 @@ static BOOL TestPrimitiveYUVCombine(void)
 		}
 	}
 
+	PROFILER_PRINT_HEADER;
+	PROFILER_PRINT(yuvSplit);
+	PROFILER_PRINT(yuvCombine);
+	PROFILER_PRINT_FOOTER;
 	rc = TRUE;
 fail:
 	PROFILER_FREE(yuvCombine);
@@ -360,21 +361,19 @@ fail:
 	return rc;
 }
 
-static BOOL TestPrimitiveYUV(BOOL use444)
+static BOOL TestPrimitiveYUV(primitives_t* prims, prim_size_t roi, BOOL use444)
 {
 	BOOL rc = FALSE;
 	UINT32 x, y;
 	UINT32 awidth, aheight;
 	BYTE* yuv[3] = {0};
 	UINT32 yuv_step[3];
-	prim_size_t roi;
 	BYTE* rgb = NULL;
 	BYTE* rgb_dst = NULL;
 	size_t size;
-	primitives_t* prims = primitives_get();
 	size_t uvsize, uvwidth;
-	size_t padding = 10000;
-	size_t stride;
+	size_t padding = 100 * 16;
+	UINT32 stride;
 	const UINT32 formats[] =
 	{
 		PIXEL_FORMAT_XRGB32,
@@ -390,16 +389,11 @@ static BOOL TestPrimitiveYUV(BOOL use444)
 	PROFILER_DEFINE(rgbToYUV444);
 	PROFILER_DEFINE(yuv420ToRGB);
 	PROFILER_DEFINE(yuv444ToRGB);
-	get_size(&roi.width, &roi.height);
 	/* Buffers need to be 16x16 aligned. */
 	awidth = roi.width + 16 - roi.width % 16;
 	aheight = roi.height + 16 - roi.height % 16;
 	stride = awidth * sizeof(UINT32);
 	size = awidth * aheight;
-	PROFILER_CREATE(rgbToYUV420, "RGBToYUV420");
-	PROFILER_CREATE(rgbToYUV444, "RGBToYUV444");
-	PROFILER_CREATE(yuv420ToRGB, "YUV420ToRGB");
-	PROFILER_CREATE(yuv444ToRGB, "YUV444ToRGB");
 
 	if (use444)
 	{
@@ -456,61 +450,78 @@ static BOOL TestPrimitiveYUV(BOOL use444)
 
 	for (x = 0; x < sizeof(formats) / sizeof(formats[0]); x++)
 	{
+		pstatus_t rc;
 		const UINT32 DstFormat = formats[x];
+		printf("Testing destination color format %s\n", GetColorFormatName(DstFormat));
+		PROFILER_CREATE(rgbToYUV420, "RGBToYUV420");
+		PROFILER_CREATE(rgbToYUV444, "RGBToYUV444");
+		PROFILER_CREATE(yuv420ToRGB, "YUV420ToRGB");
+		PROFILER_CREATE(yuv444ToRGB, "YUV444ToRGB");
 
 		if (use444)
 		{
 			PROFILER_ENTER(rgbToYUV444);
-
-			if (prims->RGBToYUV444_8u_P3AC4R(rgb, DstFormat,
-			                                 stride, yuv, yuv_step,
-			                                 &roi) != PRIMITIVES_SUCCESS)
-			{
-				PROFILER_EXIT(rgbToYUV444);
-				goto fail;
-			}
-
+			rc = prims->RGBToYUV444_8u_P3AC4R(rgb, DstFormat,
+			                                  stride, yuv, yuv_step,
+			                                  &roi);
 			PROFILER_EXIT(rgbToYUV444);
+
+			if (rc != PRIMITIVES_SUCCESS)
+				goto loop_fail;
+
+			PROFILER_PRINT_HEADER;
 			PROFILER_PRINT(rgbToYUV444);
+			PROFILER_PRINT_FOOTER;
 		}
 		else
 		{
 			PROFILER_ENTER(rgbToYUV420);
-
-			if (prims->RGBToYUV420_8u_P3AC4R(rgb, DstFormat,
-			                                 stride, yuv, yuv_step,
-			                                 &roi) != PRIMITIVES_SUCCESS)
-			{
-				PROFILER_EXIT(rgbToYUV420);
-				goto fail;
-			}
-
+			rc = prims->RGBToYUV420_8u_P3AC4R(rgb, DstFormat,
+			                                  stride, yuv, yuv_step,
+			                                  &roi);
 			PROFILER_EXIT(rgbToYUV420);
+
+			if (rc != PRIMITIVES_SUCCESS)
+				goto loop_fail;
+
+			PROFILER_PRINT_HEADER;
 			PROFILER_PRINT(rgbToYUV420);
+			PROFILER_PRINT_FOOTER;
 		}
 
 		if (!check_padding(rgb, size * sizeof(UINT32), padding, "rgb"))
-			goto fail;
+		{
+			rc = -1;
+			goto loop_fail;
+		}
 
 		if ((!check_padding(yuv[0], size, padding, "Y")) ||
 		    (!check_padding(yuv[1], uvsize, padding, "U")) ||
 		    (!check_padding(yuv[2], uvsize, padding, "V")))
-			goto fail;
+		{
+			rc = -1;
+			goto loop_fail;
+		}
 
 		if (use444)
 		{
 			PROFILER_ENTER(yuv444ToRGB);
-
-			if (prims->YUV444ToRGB_8u_P3AC4R((const BYTE**)yuv, yuv_step, rgb_dst, stride,
-			                                 DstFormat,
-			                                 &roi) != PRIMITIVES_SUCCESS)
-			{
-				PROFILER_EXIT(yuv444ToRGB);
-				goto fail;
-			}
-
+			rc = prims->YUV444ToRGB_8u_P3AC4R((const BYTE**)yuv, yuv_step, rgb_dst, stride,
+			                                  DstFormat,
+			                                  &roi);
 			PROFILER_EXIT(yuv444ToRGB);
+
+			if (rc != PRIMITIVES_SUCCESS)
+				goto loop_fail;
+
+		loop_fail:
+			PROFILER_EXIT(yuv444ToRGB);
+			PROFILER_PRINT_HEADER;
 			PROFILER_PRINT(yuv444ToRGB);
+			PROFILER_PRINT_FOOTER;
+
+			if (rc != PRIMITIVES_SUCCESS)
+				goto fail;
 		}
 		else
 		{
@@ -524,7 +535,9 @@ static BOOL TestPrimitiveYUV(BOOL use444)
 			}
 
 			PROFILER_EXIT(yuv420ToRGB);
+			PROFILER_PRINT_HEADER;
 			PROFILER_PRINT(yuv420ToRGB);
+			PROFILER_PRINT_FOOTER;
 		}
 
 		if (!check_padding(rgb_dst, size * sizeof(UINT32), padding, "rgb dst"))
@@ -543,14 +556,15 @@ static BOOL TestPrimitiveYUV(BOOL use444)
 			if (!similarRGB(srgb, drgb, roi.width, DstFormat))
 				goto fail;
 		}
+
+		PROFILER_FREE(rgbToYUV420);
+		PROFILER_FREE(rgbToYUV444);
+		PROFILER_FREE(yuv420ToRGB);
+		PROFILER_FREE(yuv444ToRGB);
 	}
 
 	rc = TRUE;
 fail:
-	PROFILER_FREE(rgbToYUV420);
-	PROFILER_FREE(rgbToYUV444);
-	PROFILER_FREE(yuv420ToRGB);
-	PROFILER_FREE(yuv444ToRGB);
 	free_padding(rgb, padding);
 	free_padding(rgb_dst, padding);
 	free_padding(yuv[0], padding);
@@ -561,26 +575,81 @@ fail:
 
 int TestPrimitivesYUV(int argc, char* argv[])
 {
+	BOOL large = (argc > 1);
 	UINT32 x;
 	int rc = -1;
 	prim_test_setup(FALSE);
+	primitives_t* prims = primitives_get();
+	primitives_t* generic = primitives_get_generic();
 
 	for (x = 0; x < 10; x++)
 	{
-		if (!TestPrimitiveYUV(TRUE)) {
+		prim_size_t roi;
+
+		if (argc > 1)
+		{
+			roi.width = 1920;
+			roi.height = 1080;
+		}
+		else
+			get_size(large, &roi.width, &roi.height);
+
+		printf("-------------------- GENERIC ------------------------\n");
+
+		if (!TestPrimitiveYUV(generic, roi, TRUE))
+		{
 			printf("TestPrimitiveYUV (444) failed.\n");
 			goto end;
 		}
 
-		if (!TestPrimitiveYUV(FALSE)) {
+		printf("---------------------- END --------------------------\n");
+#if 1
+		printf("------------------- OPTIMIZED -----------------------\n");
+
+		if (!TestPrimitiveYUV(prims, roi, TRUE))
+		{
+			printf("TestPrimitiveYUV (444) failed.\n");
+			goto end;
+		}
+
+		printf("---------------------- END --------------------------\n");
+#endif
+		printf("-------------------- GENERIC ------------------------\n");
+
+		if (!TestPrimitiveYUV(generic, roi, FALSE))
+		{
 			printf("TestPrimitiveYUV (420) failed.\n");
 			goto end;
 		}
 
-		if (!TestPrimitiveYUVCombine()) {
+		printf("---------------------- END --------------------------\n");
+		printf("------------------- OPTIMIZED -----------------------\n");
+
+		if (!TestPrimitiveYUV(prims, roi, FALSE))
+		{
+			printf("TestPrimitiveYUV (420) failed.\n");
+			goto end;
+		}
+
+		printf("---------------------- END --------------------------\n");
+		printf("-------------------- GENERIC ------------------------\n");
+
+		if (!TestPrimitiveYUVCombine(generic, roi))
+		{
 			printf("TestPrimitiveYUVCombine failed.\n");
 			goto end;
 		}
+
+		printf("---------------------- END --------------------------\n");
+		printf("------------------- OPTIMIZED -----------------------\n");
+
+		if (!TestPrimitiveYUVCombine(prims, roi))
+		{
+			printf("TestPrimitiveYUVCombine failed.\n");
+			goto end;
+		}
+
+		printf("---------------------- END --------------------------\n");
 	}
 
 	rc = 0;

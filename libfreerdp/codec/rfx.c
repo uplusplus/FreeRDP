@@ -167,7 +167,7 @@ static RFX_TILE* rfx_decoder_tile_new(void)
 	if (!(tile = (RFX_TILE*) calloc(1, sizeof(RFX_TILE))))
 		return NULL;
 
-	if (!(tile->data = (BYTE*) malloc(4 * 64 * 64)))
+	if (!(tile->data = (BYTE*) _aligned_malloc(4 * 64 * 64, 16)))
 	{
 		free(tile);
 		return NULL;
@@ -182,7 +182,7 @@ static void rfx_decoder_tile_free(RFX_TILE* tile)
 	if (tile)
 	{
 		if (tile->allocated)
-			free(tile->data);
+			_aligned_free(tile->data);
 
 		free(tile);
 	}
@@ -1150,16 +1150,17 @@ BOOL rfx_process_message(RFX_CONTEXT* context, const BYTE* data, UINT32 length,
 		REGION16 clippingRects;
 		const RECTANGLE_16* updateRects;
 		const DWORD formatSize = GetBytesPerPixel(context->pixel_format);
+		const UINT32 dstWidth = dstStride / formatSize;
 		region16_init(&clippingRects);
 
 		for (i = 0; i < message->numRects; i++)
 		{
 			RECTANGLE_16 clippingRect;
 			const RFX_RECT* rect = &(message->rects[i]);
-			clippingRect.left = left + rect->x;
-			clippingRect.top = top + rect->y;
-			clippingRect.right = clippingRect.left + rect->width;
-			clippingRect.bottom = clippingRect.top + rect->height;
+			clippingRect.left = MIN(left + rect->x, dstWidth);
+			clippingRect.top = MIN(top + rect->y, dstHeight);
+			clippingRect.right = MIN(clippingRect.left + rect->width, dstWidth);
+			clippingRect.bottom = MIN(clippingRect.top + rect->height, dstHeight);
 			region16_union_rect(&clippingRects, &clippingRects, &clippingRect);
 		}
 
@@ -1177,13 +1178,13 @@ BOOL rfx_process_message(RFX_CONTEXT* context, const BYTE* data, UINT32 length,
 
 			for (j = 0; j < nbUpdateRects; j++)
 			{
-				UINT32 stride = 64 * formatSize;
-				UINT32 nXDst = updateRects[j].left;
-				UINT32 nYDst = updateRects[j].top;
-				UINT32 nXSrc = nXDst - updateRect.left;
-				UINT32 nYSrc = nYDst - updateRect.top;
-				UINT32 nWidth = MIN(64, updateRects[j].right - updateRects[j].left);
-				UINT32 nHeight = MIN(64, updateRects[j].bottom - updateRects[j].top);
+				const UINT32 stride = 64 * formatSize;
+				const UINT32 nXDst = updateRects[j].left;
+				const UINT32 nYDst = updateRects[j].top;
+				const UINT32 nXSrc = nXDst - updateRect.left;
+				const UINT32 nYSrc = nYDst - updateRect.top;
+				const UINT32 nWidth = updateRects[j].right - updateRects[j].left;
+				const UINT32 nHeight = updateRects[j].bottom - updateRects[j].top;
 
 				if (!freerdp_image_copy(dst, dstFormat, dstStride,
 				                        nXDst, nYDst, nWidth, nHeight,

@@ -66,13 +66,16 @@ static char* GetEnvAlloc(LPCSTR lpName)
 
 	if (length > 0)
 	{
-		env = malloc(length + 1);
+		env = malloc(length);
 
 		if (!env)
 			return NULL;
 
-		GetEnvironmentVariableA(lpName, env, length + 1);
-		env[length] = '\0';
+		if (GetEnvironmentVariableA(lpName, env, length) != length - 1)
+		{
+			free(env);
+			return NULL;
+		}
 	}
 
 	return env;
@@ -97,7 +100,7 @@ static char* GetPath_TEMP(void)
 #ifdef _WIN32
 	path = GetEnvAlloc("TEMP");
 #elif defined(__IOS__)
-    path = ios_get_temp();
+	path = ios_get_temp();
 #else
 	path = GetEnvAlloc("TMPDIR");
 
@@ -366,7 +369,11 @@ char* GetEnvironmentPath(char* name)
 		if (!env)
 			return NULL;
 
-		nSize = GetEnvironmentVariableA(name, env, nSize);
+		if (GetEnvironmentVariableA(name, env, nSize) != nSize - 1)
+		{
+			free(env);
+			return NULL;
+		}
 	}
 
 	return env;

@@ -118,6 +118,7 @@ static UINT cliprdr_packet_send(cliprdrPlugin* cliprdr, wStream* s)
 	return status;
 }
 
+#ifdef WITH_DEBUG_CLIPRDR
 static void cliprdr_print_general_capability_flags(UINT32 flags)
 {
 	WLog_INFO(TAG,  "generalFlags (0x%08"PRIX32") {", flags);
@@ -136,6 +137,7 @@ static void cliprdr_print_general_capability_flags(UINT32 flags)
 
 	WLog_INFO(TAG,  "}");
 }
+#endif
 
 /**
  * Function description
@@ -796,7 +798,7 @@ static UINT cliprdr_client_lock_clipboard_data(CliprdrClientContext* context,
 	WLog_Print(cliprdr->log, WLOG_DEBUG,
 	           "ClientLockClipboardData: clipDataId: 0x%08"PRIX32"",
 	           lockClipboardData->clipDataId);
-	return cliprdr_packet_send(cliprdr, s);;
+	return cliprdr_packet_send(cliprdr, s);
 }
 
 /**

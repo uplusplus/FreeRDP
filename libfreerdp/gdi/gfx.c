@@ -208,10 +208,13 @@ static UINT gdi_SurfaceCommand_Uncompressed(rdpGdi* gdi,
 	UINT status = CHANNEL_RC_OK;
 	gdiGfxSurface* surface;
 	RECTANGLE_16 invalidRect;
-	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 
+	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 	if (!surface)
-		return ERROR_INTERNAL_ERROR;
+	{
+		WLog_ERR(TAG, "%s: unable to retrieve surfaceData for surfaceId=%"PRIu32"", __FUNCTION__, cmd->surfaceId);
+		return ERROR_NOT_FOUND;
+	}
 
 	if (!freerdp_image_copy(surface->data, surface->format, surface->scanline,
 	                        cmd->left, cmd->top, cmd->width, cmd->height,
@@ -245,10 +248,13 @@ static UINT gdi_SurfaceCommand_RemoteFX(rdpGdi* gdi,
 {
 	UINT status = CHANNEL_RC_OK;
 	gdiGfxSurface* surface;
-	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 
+	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 	if (!surface)
-		return ERROR_INTERNAL_ERROR;
+	{
+		WLog_ERR(TAG, "%s: unable to retrieve surfaceData for surfaceId=%"PRIu32"", __FUNCTION__, cmd->surfaceId);
+		return ERROR_NOT_FOUND;
+	}
 
 	rfx_context_set_pixel_format(surface->codecs->rfx, cmd->format);
 
@@ -283,10 +289,13 @@ static UINT gdi_SurfaceCommand_ClearCodec(rdpGdi* gdi,
 	UINT status = CHANNEL_RC_OK;
 	gdiGfxSurface* surface;
 	RECTANGLE_16 invalidRect;
-	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 
+	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 	if (!surface)
-		return ERROR_INTERNAL_ERROR;
+	{
+		WLog_ERR(TAG, "%s: unable to retrieve surfaceData for surfaceId=%"PRIu32"", __FUNCTION__, cmd->surfaceId);
+		return ERROR_NOT_FOUND;
+	}
 
 	rc = clear_decompress(surface->codecs->clear, cmd->data, cmd->length,
 	                      cmd->width, cmd->height,
@@ -328,10 +337,13 @@ static UINT gdi_SurfaceCommand_Planar(rdpGdi* gdi, RdpgfxClientContext* context,
 	BYTE* DstData = NULL;
 	gdiGfxSurface* surface;
 	RECTANGLE_16 invalidRect;
-	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 
+	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 	if (!surface)
-		return ERROR_INTERNAL_ERROR;
+	{
+		WLog_ERR(TAG, "%s: unable to retrieve surfaceData for surfaceId=%"PRIu32"", __FUNCTION__, cmd->surfaceId);
+		return ERROR_NOT_FOUND;
+	}
 
 	DstData = surface->data;
 
@@ -373,10 +385,13 @@ static UINT gdi_SurfaceCommand_AVC420(rdpGdi* gdi,
 	gdiGfxSurface* surface;
 	RDPGFX_H264_METABLOCK* meta;
 	RDPGFX_AVC420_BITMAP_STREAM* bs;
-	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 
+	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 	if (!surface)
-		return ERROR_INTERNAL_ERROR;
+	{
+		WLog_ERR(TAG, "%s: unable to retrieve surfaceData for surfaceId=%"PRIu32"", __FUNCTION__, cmd->surfaceId);
+		return ERROR_NOT_FOUND;
+	}
 
 	bs = (RDPGFX_AVC420_BITMAP_STREAM*) cmd->extra;
 
@@ -429,10 +444,13 @@ static UINT gdi_SurfaceCommand_AVC444(rdpGdi* gdi, RdpgfxClientContext* context,
 	RDPGFX_AVC420_BITMAP_STREAM* avc2;
 	RDPGFX_H264_METABLOCK* meta2;
 	RECTANGLE_16* regionRects = NULL;
-	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 
+	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 	if (!surface)
-		return ERROR_INTERNAL_ERROR;
+	{
+		WLog_ERR(TAG, "%s: unable to retrieve surfaceData for surfaceId=%"PRIu32"", __FUNCTION__, cmd->surfaceId);
+		return ERROR_NOT_FOUND;
+	}
 
 	bs = (RDPGFX_AVC444_BITMAP_STREAM*) cmd->extra;
 
@@ -494,10 +512,13 @@ static UINT gdi_SurfaceCommand_Alpha(rdpGdi* gdi, RdpgfxClientContext* context,
 	UINT32 color;
 	gdiGfxSurface* surface;
 	RECTANGLE_16 invalidRect;
-	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 
+	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 	if (!surface)
-		return ERROR_INTERNAL_ERROR;
+	{
+		WLog_ERR(TAG, "%s: unable to retrieve surfaceData for surfaceId=%"PRIu32"", __FUNCTION__, cmd->surfaceId);
+		return ERROR_NOT_FOUND;
+	}
 
 	WLog_WARN(TAG, "TODO gdi_SurfaceCommand_Alpha: status: %"PRIu32"", status);
 	/* fill with green for now to distinguish from the rest */
@@ -536,10 +557,13 @@ static UINT gdi_SurfaceCommand_Progressive(rdpGdi* gdi,
 	UINT status = CHANNEL_RC_OK;
 	gdiGfxSurface* surface;
 	RECTANGLE_16 invalidRect;
-	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 
+	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 	if (!surface)
-		return ERROR_INTERNAL_ERROR;
+	{
+		WLog_ERR(TAG, "%s: unable to retrieve surfaceData for surfaceId=%"PRIu32"", __FUNCTION__, cmd->surfaceId);
+		return ERROR_NOT_FOUND;
+	}
 
 	rc = progressive_create_surface_context(surface->codecs->progressive,
 	                                        cmd->surfaceId,
@@ -700,7 +724,7 @@ static UINT gdi_CreateSurface(RdpgfxClientContext* context,
 	}
 
 	surface->scanline = gfx_align_scanline(surface->width * 4, 16);
-	surface->data = (BYTE*) calloc(1, surface->scanline * surface->height);
+	surface->data = (BYTE*) _aligned_malloc(surface->scanline * surface->height, 16);
 
 	if (!surface->data)
 	{
@@ -731,7 +755,7 @@ static UINT gdi_DeleteSurface(RdpgfxClientContext* context,
 	{
 		region16_uninit(&surface->invalidRegion);
 		codecs = surface->codecs;
-		free(surface->data);
+		_aligned_free(surface->data);
 		free(surface);
 	}
 
@@ -1051,6 +1075,7 @@ void gdi_graphics_pipeline_init(rdpGdi* gdi, RdpgfxClientContext* gfx)
 	gfx->MapSurfaceToOutput = gdi_MapSurfaceToOutput;
 	gfx->MapSurfaceToWindow = gdi_MapSurfaceToWindow;
 	gfx->UpdateSurfaces = gdi_UpdateSurfaces;
+	PROFILER_CREATE(gfx->SurfaceProfiler, "GFX-PROFILER");
 }
 
 void gdi_graphics_pipeline_uninit(rdpGdi* gdi, RdpgfxClientContext* gfx)
@@ -1058,5 +1083,9 @@ void gdi_graphics_pipeline_uninit(rdpGdi* gdi, RdpgfxClientContext* gfx)
 	region16_uninit(&(gdi->invalidRegion));
 	gdi->gfx = NULL;
 	gfx->custom = NULL;
+	PROFILER_PRINT_HEADER;
+	PROFILER_PRINT(gfx->SurfaceProfiler);
+	PROFILER_PRINT_FOOTER;
+	PROFILER_FREE(gfx->SurfaceProfiler);
 }
 

@@ -450,14 +450,9 @@ BOOL gdi_bitmap_update(rdpContext* context,
                        const BITMAP_UPDATE* bitmapUpdate)
 {
 	UINT32 index;
-	rdpGdi* gdi;
-	rdpCodecs* codecs;
 
 	if (!context || !bitmapUpdate || !context->gdi || !context->codecs)
 		return FALSE;
-
-	gdi = context->gdi;
-	codecs = context->codecs;
 
 	for (index = 0; index < bitmapUpdate->number; index++)
 	{
@@ -1164,7 +1159,8 @@ BOOL gdi_resize_ex(rdpGdi* gdi, UINT32 width, UINT32 height,
 	if (!gdi || !gdi->primary)
 		return FALSE;
 
-	if (gdi->width == width && gdi->height == height)
+	if (gdi->width == width && gdi->height == height &&
+	    (!buffer || gdi->primary_buffer == buffer))
 		return TRUE;
 
 	if (gdi->drawing == gdi->primary)
